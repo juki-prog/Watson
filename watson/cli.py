@@ -37,6 +37,7 @@ from .utils import (
     style,
     parse_tags,
     json_arrow_encoder,
+    countdown,
 )
 
 
@@ -180,6 +181,19 @@ def help(ctx, command):
     click.echo(cmd.get_help(ctx))
 
 
+def _stop_timer(watson, at): 
+    frame = watson.stop(stop_at=at)
+    output_str = "Stopping project {}{}, started {} and stopped {}. (id: {})"
+    click.echo(output_str.format(
+        style('project', frame.project),
+        (" " if frame.tags else "") + style('tags', frame.tags),
+        style('time', frame.start.humanize()),
+        style('time', frame.stop.humanize()),
+        style('short_id', frame.id),
+    ))
+    watson.save()
+
+
 def _start(watson, project, tags, restart=False, start_at=None, gap=True):
     """
     Start project with given list of tags and save status.
@@ -192,6 +206,26 @@ def _start(watson, project, tags, restart=False, start_at=None, gap=True):
         style('time', "{:HH:mm}".format(current['start']))
     ))
     watson.save()
+
+
+def _start_pomodoro(watson, project, tags, duration, restart=False, start_at=None, gap=True): 
+    """
+    Start a pomodoro timer with given list of tags and saven status. 
+    """
+    current = watson.start(project, tags, restart=restart, start_at=start_at,
+                           gap=gap,)
+    click.echo("Starting pomodoro for project {}{} at {}".format(
+        style('project', project),
+        (" " if current['tags'] else "") + style('tags', current['tags']),
+        style('time', "{:HH:mm}".format(current['start']))
+    ))
+    watson.save()
+    try: 
+        countdown(duration*60)
+    except KeyboardInterrupt:
+        print("\nPomodoro Stopped")
+    finally:
+        _stop_timer(watson,None)
 
 
 @cli.command()
@@ -278,6 +312,74 @@ def start(ctx, watson, confirm_new_project, confirm_new_tag, args, at_,
 
     _start(watson, project, tags, start_at=at_, gap=gap_)
 
+@cli.command()
+@click.argument('args', nargs=-1, 
+    shell_complete=get_project_or_task_completion)
+@click.option('--at', 'at_', type=DateTime, default=None,
+              cls=MutuallyExclusiveOption, mutually_exclusive=['gap_'],
+              help=('Start frame at this time. Must be in '
+                    '(YYYY-MM-DDT)?HH:MM(:SS)? format.'))
+@click.option('-g/-G', '--gap/--no-gap', 'gap_', is_flag=True, default=True,
+              cls=MutuallyExclusiveOption, mutually_exclusive=['at_'],
+              help=("(Don't) leave gap between end time of previous project "
+                    "and start time of the current."))
+@click.option('-c', '--confirm-new-project', is_flag=True, default=False,
+              help="Confirm addition of new project.")
+@click.option('-b', '--confirm-new-tag', is_flag=True, default=False,
+              help="Confirm creation of new tag.")
+@click.option('-d/', '--duration', 'duration_', type=int, show_default=25, default=25)
+@click.pass_obj
+@click.pass_context
+@catch_watson_error
+def pomodoro(ctx, watson, confirm_new_project, confirm_new_tag, args, at_, duration_, gap_=True ):
+    """
+    Start a Pomdoro timer for the given project. 
+    You can add tags indicating more specifically what you are working on with '+tag'.
+
+    If there is already a running project and the configuration option
+    `options.stop_on_start` is set to a true value (`1`, `on`, `true`, or
+    `yes`), it is stopped before the new project is started.
+
+    If `--at` option is given, the provided starting time is used. The
+    specified time must be after the end of the previous frame and must not be
+    in the future. If there is a current frame running, it will be stopped at
+    the provided time.
+    """
+    project = ' '.join(
+        itertools.takewhile(lambda s: not s.startswith('+'), args)
+    )
+
+    if not project: 
+        raise click.ClickException("No project given") 
+    
+    if (watson.config.getboolean('options', 'confirm_new_project') or 
+            confirm_new_project): 
+        confirm_project(project, watson.projects) 
+    
+    # Parse Tags 
+    tags = parse_tags(args) 
+
+    # Confirm creation of new tag(s) if that option is set
+    if (watson.config.getboolean('options', 'confirm_new_tag') or
+            confirm_new_tag):
+        confirm_tags(tags, watson.tags)
+    
+    if project and watson.is_started and not gap_:
+        current = watson.current
+        errmsg = ("Project '{}' is already started and '--no-gap' is passed. "
+                  "Please stop manually.")
+        raise click.ClickException(
+            style(
+                'error', errmsg.format(current['project'])
+            )
+        )
+
+    if (project and watson.is_started and
+        watson.config.getboolean('options', 'stop_on_start')):
+        ctx.invoke(stop, at_=at_)
+
+    _start_pomodoro(watson, project, tags, start_at=at_, gap=gap_, duration=duration_)
+    
 
 @cli.command(context_settings={'ignore_unknown_options': True})
 @click.option('--at', 'at_', type=DateTime, default=None,
@@ -299,6 +401,7 @@ def stop(watson, at_):
     $ watson stop --at 13:37
     Stopping project apollo11, started an hour ago and stopped 30 minutes ago. (id: e9ccd52) # noqa: E501
     """
+    """     
     frame = watson.stop(stop_at=at_)
     output_str = "Stopping project {}{}, started {} and stopped {}. (id: {})"
     click.echo(output_str.format(
@@ -308,7 +411,8 @@ def stop(watson, at_):
         style('time', frame.stop.humanize()),
         style('short_id', frame.id),
     ))
-    watson.save()
+    watson.save() """
+    _stop_timer(watson, at=at_)
 
 
 @cli.command(context_settings={'ignore_unknown_options': True})

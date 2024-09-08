@@ -10,6 +10,7 @@ import tempfile
 from io import StringIO
 import click
 import arrow
+import time
 
 import watson as _watson
 from .fullmoon import get_last_full_moon
@@ -400,3 +401,12 @@ def json_arrow_encoder(obj):
         return obj.for_json()
 
     raise TypeError("Object {} is not JSON serializable".format(obj))
+
+def countdown(seconds):
+    target_time = time.time() + seconds
+    while seconds > 0:
+        mins, secs = divmod(seconds, 60)
+        print(f'{mins:02}:{secs:02}', end='\r')
+        time.sleep(1)
+        # Recalculate the remaining time based on the actual current time
+        seconds = int(target_time - time.time())
