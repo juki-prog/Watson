@@ -12,6 +12,10 @@ Wanna know what it looks like? Check this below.
 
 Nice isn't it?
 
+This is a fork of Watson
+------------------------
+This fork intends to add a Pomdoro Timer feature to the Watson timetracking application. 
+
 Quick start
 -----------
 
